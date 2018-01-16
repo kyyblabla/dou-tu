@@ -1,21 +1,23 @@
 import { ipcRenderer as ipc } from 'electron'
 
-export function renderPub (e, success, error) {
+export function renderPub (eventName, success, error) {
   let send = (arg) => {
-    ipc.send(e, arg)
+    ipc.send(eventName, arg)
   }
-  ipc.on(`${e}_success`, (e, d) => {
+  ipc.on(`${eventName}_success`, (e, d) => {
+    console.log(d)
     if (success) {
       success(d)
     } else {
       console.log(d)
     }
   })
-  ipc.on(`${e}_error`, (e, d) => {
+  ipc.on(`${eventName}_error`, (e, info) => {
+    console.log('xxxxx')
     if (error) {
-      error(d)
+      error(info)
     } else {
-      console.log(d)
+      console.error(info)
     }
   })
   return {
@@ -23,8 +25,8 @@ export function renderPub (e, success, error) {
   }
 }
 
-export function renderSub (e, callback) {
-  ipc.on(`${e}`, (e, d) => {
+export function renderSub (eventName, callback) {
+  ipc.on(`${eventName}`, (e, d) => {
     callback(d)
   })
 }

@@ -5,13 +5,13 @@
             <el-header>
                 <el-button><i class="el-icon-time"></i></el-button>
                 <el-button><i class="el-icon-star-off"></i></el-button>
-                <el-input @keyup.enter.native="searchImage" v-model="keyWord"
+                <el-input @keyup.enter.native="search(searchParam)" v-model="searchParam.keyWord"
                           prefix-icon="el-icon-search"></el-input>
             </el-header>
             <el-main ref="main">
                 <div class="rs-items">
                     <!--:class="{'selected':currentImageSrc === img.src}" @click="currentImageSrc=img.src"-->
-                    <div :id="img.id" @dblclick="onDbClickImage(img)" class="rs-item" v-for="img in images">
+                    <div :id="img.id" @dblclick="onDbClickImage(img)" class="rs-item" v-for="img in result.data">
                         <img :src="img.src" alt="img.title">
                         <div class="rs-opertion">
                             <i @click="toggleLikeImage(img)"
@@ -20,11 +20,17 @@
                         </div>
                     </div>
                 </div>
+                <div v-show="scrolling" class="rs-pagination">
+                    {{result.pagination.pageNo}}/{{result.pagination.pageCount}}
+                </div>
+                <div class="rs-message">
+                    <p v-show="showBasLine">这里是底线</p>
+                </div>
             </el-main>
-            <el-footer>
-                <el-button :loading="loading==1" type="primary" v-show="!lastPage" @click="loadMore">Load more
-                </el-button>
-            </el-footer>
+            <!--<el-footer>-->
+            <!--<el-button :loading="viewStatus.loading==1" type="primary" @click="loadMore">Load more-->
+            <!--</el-button>-->
+            <!--</el-footer>-->
         </el-container>
     </div>
 </template>
@@ -36,132 +42,136 @@
     name: 'dou-tu',
     data () {
       return {
-        searchPara: {
+        searchParam: {
           keyWord: 'no',
-          pagination: {
-            pageNo: 1
-          }
+          pageNo: 1
         },
         result: {
           pagination: {
-            pageNo: null,
+            pageNo: 0,
             firstPage: null,
-            lastPage: null
+            lastPage: null,
+            pageCount: 0
           },
           data: []
         },
         viewStatus: {
           keyWord: null,
-          loading: false,
-          maxScrollTop: 0,
-          loadedPages: []
+          loading: 0,
+          lastScrollTop: 0,
+          maxLoadedPage: 0,
+          pageNo: 1,
+          scrolling: false
         },
         searcher: null,
-        copyer: null,
-        images: [],
-        page: 1,
-        keyWord: 'no',
-        lastPage: true,
-        currentImageId: -1,
-        loading: 0,
-        maxScrollTop: 0,
-        loadedPages: []
+        copyer: null
       }
     },
     watch: {
-      images () {
-        this.loading = 0
-        this.loadedPages[this.page] = true
-      },
-      loading (v) {
-        if (v === -1) {
+      'viewStatus.loading': function (loading) {
+        if (loading === -1) {
           this.$Progress.fail()
-        } else if (v === 0) {
+        } else if (loading === 0) {
           this.$Progress.finish()
         } else {
           this.$Progress.start()
         }
       }
     },
+    computed: {
+      showBasLine () {
+        return this.result.pagination.lastPage && !this.result.pagination.firstPage
+      }
+    },
     methods: {
-      hasLoadedPage (page) {
-        return this.viewStatus.loadedPages[page] === true
+      isLastPage () {
+        return this.result.pagination.lastPage
+      },
+      isFirstPage () {
+        return this.result.pagination.firstPage
       },
       search (para) {
-        this.beforeSearch(para)
-        this.onSearch(para)
+        this.beginSearch(para)
+        this.searcher.send(para)
       },
-      beforeSearch (para) {
-      },
-      onSearch (para) {
+      beginSearch ({keyWord, pageNo = 1}) {
+        this.viewStatus.loading = 1
+        this.viewStatus.keyWord = keyWord
+        this.viewStatus.pageNo = pageNo
+        this.viewStatus.maxLoadedPage = 0
+        this.viewStatus.lastScrollTop = 0
       },
       onSearchResult (data) {
+        console.log(data)
+        const wrapData = (data, baseId = 0) => {
+          return data.map((d, index) => {
+            return Object.assign({liked: false, id: 'img_' + (baseId + index)}, d)
+          })
+        }
+        let firstPage = data.pagination.firstPage
+        let newData = wrapData(data.data, firstPage ? 0 : this.result.data.length)
+        this.result.data = firstPage ? newData : [...this.result.data, ...newData]
+        this.result.pagination = data.pagination
+        this.finishSearch()
       },
       onSearchError ({code}) {
-        this.loading = -1
+        console.log('eee')
         this.$message({
           message: `${code}`,
           type: 'error',
           center: true,
           duration: 1000
         })
+        this.finishSearch(false)
       },
-      afterSearch () {
-
+      finishSearch (success = true) {
+        if (success) {
+          this.viewStatus.loading = 0
+          this.viewStatus.maxLoadedPage = Math.max(this.viewStatus.maxLoadedPage, this.result.pagination.pageNo)
+          if (this.isFirstPage()) {
+            this.$refs.main.$el.scrollTop = 0
+          }
+        } else {
+          this.viewStatus.loading = -1
+        }
       },
       loadMore () {
-        this.searchImage(null, this.page + 1)
-      },
-      searchImage (event, page = 1) {
-        this.loading = 1
-        if (page === 1) {
-          this.loadedPages = []
+        if (this.viewStatus.loading === 1) {
+          return
         }
-        let para = {
-          keyWord: this.keyWord,
-          page
+        if (this.isLastPage()) {
+          return
         }
-        this.searcher.send(para)
+        if (this.viewStatus.pageNo + 1 <= this.viewStatus.maxLoadedPage) {
+          return
+        }
+        let param = {
+          keyWord: this.viewStatus.keyWord,
+          pageNo: this.viewStatus.pageNo + 1
+        }
+        this.search(param)
       },
       onScroll (e) {
-        if (this.loadedPages[this.page + 1] === true) {
-          return
-        }
         let el = this.$refs.main.$el
-        console.log(`${el.scrollTop}:${this.maxScrollTop}`)
-        if (el.scrollTop <= this.maxScrollTop) {
+        let lastScrollTop = this.viewStatus.lastScrollTop
+        this.viewStatus.lastScrollTop = el.scrollTop
+        if (el.scrollTop <= lastScrollTop) {
           return
-        } else {
-          this.maxScrollTop = el.scrollTop
         }
         let distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
         let rowHeigh = 80
         if (distanceToBottom <= rowHeigh) {
-          console.log(e)
-          console.log(distanceToBottom)
+          this.loadMore()
         }
-      },
-      onResult (data) {
-        const wrapData = (data, baseId = 0) => {
-          return data.map((d, index) => {
-            return Object.assign({liked: false, id: 'img_' + (baseId + index)}, d)
-          })
-        }
-        let firstPage = data.page === 1
-        let newData = wrapData(data.data, firstPage ? 0 : this.images.length)
-        this.images = firstPage ? newData : [...this.images, ...newData]
-        this.page = data.page
-        this.lastPage = data.lastPage
       },
       toggleLikeImage (img) {
         img.liked = !img.liked
       },
       onDbClickImage (img) {
-        console.log(img)
-        this.copyer.send({url: img.src, title: img.title})
+        this.copyer.send(_.pick(img, ['src', 'title']))
       },
       init () {
-        this.searcher = renderPub('IMAGES_SEARCH', this.onResult, this.onSearchError)
+        this.searcher = renderPub('IMAGES_SEARCH', this.onSearchResult, this.onSearchError)
         this.copyer = renderPub('IMAGE_COPY', ({url, title}) => {
           this.$message({
             message: `Copied  ${title}`,
@@ -170,7 +180,7 @@
             duration: 1000
           })
         })
-        this.$refs.main.$el.addEventListener('scroll', _.throttle(this.onScroll, 500))
+        this.$refs.main.$el.addEventListener('scroll', _.throttle(this.onScroll, 300))
       }
     },
     mounted () {
@@ -218,8 +228,34 @@
         padding: 10px;
     }
 
+    .rs-message {
+        p {
+            margin: 0;
+            padding: 0;
+            font-size: small;
+            text-align: center;
+        }
+    }
+
     @main-color: #409EFF;
     @main-back-color: #f0f0f0;
+    @rs-pagination-size: 50px;
+    .rs-pagination {
+        right: 0;
+        top: 200px;
+        position: fixed;
+        box-sizing: border-box;
+        width: @rs-pagination-size *0.8;
+        height: @rs-pagination-size;
+        overflow: hidden;
+        background-color: @main-color;
+        color: #fff;
+        text-align: center;
+        line-height: @rs-pagination-size;
+        border-radius: 4px 0 0 4px;
+        box-shadow: 2px 2px 10px #000;
+    }
+
     .rs-items {
         @rs-item-size: 100px;
         display: flex;
