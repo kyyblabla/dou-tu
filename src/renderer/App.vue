@@ -30,24 +30,48 @@
 </template>
 
 <script>
-  import { ipcRenderer } from 'electron'
+  import { renderPub } from './ipc'
+  import _ from 'lodash'
   export default {
     name: 'dou-tu',
     data () {
       return {
+        searchPara: {
+          keyWord: 'no',
+          pagination: {
+            pageNo: 1
+          }
+        },
+        result: {
+          pagination: {
+            pageNo: null,
+            firstPage: null,
+            lastPage: null
+          },
+          data: []
+        },
+        viewStatus: {
+          keyWord: null,
+          loading: false,
+          maxScrollTop: 0,
+          loadedPages: []
+        },
+        searcher: null,
+        copyer: null,
         images: [],
-        currentImageSrc: null,
-        keyWord: '王尼玛',
         page: 1,
+        keyWord: 'no',
         lastPage: true,
         currentImageId: -1,
-        loading: 0
+        loading: 0,
+        maxScrollTop: 0,
+        loadedPages: []
       }
     },
     watch: {
       images () {
-        this.$nextTick(() => {
-        })
+        this.loading = 0
+        this.loadedPages[this.page] = true
       },
       loading (v) {
         if (v === -1) {
@@ -60,19 +84,62 @@
       }
     },
     methods: {
+      hasLoadedPage (page) {
+        return this.viewStatus.loadedPages[page] === true
+      },
+      search (para) {
+        this.beforeSearch(para)
+        this.onSearch(para)
+      },
+      beforeSearch (para) {
+      },
+      onSearch (para) {
+      },
+      onSearchResult (data) {
+      },
+      onSearchError ({code}) {
+        this.loading = -1
+        this.$message({
+          message: `${code}`,
+          type: 'error',
+          center: true,
+          duration: 1000
+        })
+      },
+      afterSearch () {
+
+      },
       loadMore () {
         this.searchImage(null, this.page + 1)
       },
       searchImage (event, page = 1) {
         this.loading = 1
-        let data = {
+        if (page === 1) {
+          this.loadedPages = []
+        }
+        let para = {
           keyWord: this.keyWord,
           page
         }
-        ipcRenderer.send('IMAGES_SEARCH', data)
+        this.searcher.send(para)
       },
       onScroll (e) {
-        console.log(e)
+        if (this.loadedPages[this.page + 1] === true) {
+          return
+        }
+        let el = this.$refs.main.$el
+        console.log(`${el.scrollTop}:${this.maxScrollTop}`)
+        if (el.scrollTop <= this.maxScrollTop) {
+          return
+        } else {
+          this.maxScrollTop = el.scrollTop
+        }
+        let distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+        let rowHeigh = 80
+        if (distanceToBottom <= rowHeigh) {
+          console.log(e)
+          console.log(distanceToBottom)
+        }
       },
       onResult (data) {
         const wrapData = (data, baseId = 0) => {
@@ -85,41 +152,29 @@
         this.images = firstPage ? newData : [...this.images, ...newData]
         this.page = data.page
         this.lastPage = data.lastPage
-        this.loading = 0
       },
       toggleLikeImage (img) {
         img.liked = !img.liked
       },
       onDbClickImage (img) {
-        ipcRenderer.send('IMAGE_COPY', {url: img.src, title: img.title})
-      }
-    },
-    mounted () {
-      this.$nextTick(() => {
-        let _this = this
-        ipcRenderer.on('IMAGES_SEARCH_RESULT', (e, data) => {
-          _this.onResult(data)
-        })
-        ipcRenderer.on('IMAGES_SEARCH_ERROR', (e, {code}) => {
-          _this.loading = -1
-          _this.$message({
-            message: `${code}`,
-            type: 'error',
-            center: true,
-            duration: 1000
-          })
-        })
-        ipcRenderer.on('IMAGE_COPIED', (e, {url, title}) => {
-          _this.$message({
-            message: `Copied ${title}`,
+        console.log(img)
+        this.copyer.send({url: img.src, title: img.title})
+      },
+      init () {
+        this.searcher = renderPub('IMAGES_SEARCH', this.onResult, this.onSearchError)
+        this.copyer = renderPub('IMAGE_COPY', ({url, title}) => {
+          this.$message({
+            message: `Copied  ${title}`,
             type: 'success',
             center: true,
             duration: 1000
           })
         })
-        console.log(this.$refs.main)
-        this.$refs.main.$el.addEventListener('scroll', this.onScroll)
-      })
+        this.$refs.main.$el.addEventListener('scroll', _.throttle(this.onScroll, 500))
+      }
+    },
+    mounted () {
+      this.init()
     }
   }
 </script>
