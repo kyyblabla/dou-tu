@@ -15,8 +15,8 @@ let mainSub = (eventName, doSomething) => {
 }
 
 mainSub('IMAGES_SEARCH', searchImages)
-mainSub('IMAGE_COPY', async ({src, title}) => {
+mainSub('IMAGE_COPY', async ({ src, title }) => {
   console.log(src)
   clipboard.writeImage(nativeImage.createFromBuffer(await getBinary(src)))
-  return {src, title}
+  return { src, title }
 })

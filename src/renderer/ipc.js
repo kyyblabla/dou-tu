@@ -1,7 +1,7 @@
 import { ipcRenderer as ipc } from 'electron'
 
-export function renderPub (eventName, success, error) {
-  let send = (arg) => {
+export function renderPub(eventName, success, error) {
+  let send = arg => {
     ipc.send(eventName, arg)
   }
   ipc.on(`${eventName}_success`, (e, d) => {
@@ -23,7 +23,7 @@ export function renderPub (eventName, success, error) {
   }
 }
 
-export function renderSub (eventName, callback) {
+export function renderSub(eventName, callback) {
   ipc.on(`${eventName}`, (e, d) => {
     callback(d)
   })
