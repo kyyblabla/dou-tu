@@ -9,7 +9,7 @@
                           prefix-icon="el-icon-search"></el-input>
             </el-header>
             <el-main ref="main">
-                <div class="rs-items">
+                <div id="rs-items" class="rs-items">
                     <!--:class="{'selected':currentImageSrc === img.src}" @click="currentImageSrc=img.src"-->
                     <div :id="img.id" @dblclick="onDbClickImage(img)" class="rs-item" v-for="img in result.data">
                         <img :src="img.src" alt="img.title">
@@ -20,9 +20,9 @@
                         </div>
                     </div>
                 </div>
-                <div v-show="scrolling" class="rs-pagination">
-                    {{result.pagination.pageNo}}/{{result.pagination.pageCount}}
-                </div>
+                <!--<div v-show="viewStatus.scrollTimerId" class="rs-pagination">-->
+                    <!--{{scrollPaginationInfo}}-->
+                <!--</div>-->
                 <div class="rs-message">
                     <p v-show="showBasLine">这里是底线</p>
                 </div>
@@ -61,7 +61,7 @@
           lastScrollTop: 0,
           maxLoadedPage: 0,
           pageNo: 1,
-          scrolling: false
+          scrollTimerId: null
         },
         searcher: null,
         copyer: null
@@ -81,6 +81,32 @@
     computed: {
       showBasLine () {
         return this.result.pagination.lastPage && !this.result.pagination.firstPage
+      },
+      scrollPaginationInfo () {
+        let getCurrentPageNo = () => {
+          if (!this.$refs.main) {
+            return
+          }
+          let el = this.$refs.main.$el
+          let scrollBarOffset = el.scrollTop + el.clientHeight
+          let lowestItem = null
+          console.log(`scrollBarOffset:${scrollBarOffset}`)
+          for (let item of this.result.data) {
+            let itemDiv = this.$el.querySelector(`#${item.id}`)
+            if (itemDiv) {
+              console.log(`${itemDiv.offsetTop}:${itemDiv.offsetHeight}`)
+              if (itemDiv.offsetTop + itemDiv.offsetHeight > scrollBarOffset) {
+                lowestItem = item
+                break
+              }
+            }
+          }
+          console.log(lowestItem)
+          return lowestItem === null ? 1 : lowestItem.pageNo
+        }
+        let currentPageNo = getCurrentPageNo()
+        let pageCount = this.result.pagination.pageCount
+        return `${currentPageNo}/${pageCount}`
       }
     },
     methods: {
@@ -103,19 +129,18 @@
       },
       onSearchResult (data) {
         console.log(data)
-        const wrapData = (data, baseId = 0) => {
+        const wrapData = (data, pageNo, baseId = 0) => {
           return data.map((d, index) => {
-            return Object.assign({liked: false, id: 'img_' + (baseId + index)}, d)
+            return Object.assign({pageNo, liked: false, id: 'img_' + (baseId + index)}, d)
           })
         }
         let firstPage = data.pagination.firstPage
-        let newData = wrapData(data.data, firstPage ? 0 : this.result.data.length)
+        let newData = wrapData(data.data, data.pagination.pageNo, firstPage ? 0 : this.result.data.length)
         this.result.data = firstPage ? newData : [...this.result.data, ...newData]
         this.result.pagination = data.pagination
         this.finishSearch()
       },
       onSearchError ({code}) {
-        console.log('eee')
         this.$message({
           message: `${code}`,
           type: 'error',
@@ -151,7 +176,16 @@
         }
         this.search(param)
       },
+      showPageInfo () {
+        if (this.viewStatus.scrollTimerId) {
+          clearTimeout(this.viewStatus.scrollTimerId)
+        }
+        this.viewStatus.scrollTimerId = setTimeout(() => {
+          this.viewStatus.scrollTimerId = null
+        }, 800)
+      },
       onScroll (e) {
+        this.showPageInfo()
         let el = this.$refs.main.$el
         let lastScrollTop = this.viewStatus.lastScrollTop
         this.viewStatus.lastScrollTop = el.scrollTop
@@ -169,8 +203,10 @@
       },
       onDbClickImage (img) {
         this.copyer.send(_.pick(img, ['src', 'title']))
-      },
-      init () {
+      }
+    },
+    mounted () {
+      this.$nextTick(() => {
         this.searcher = renderPub('IMAGES_SEARCH', this.onSearchResult, this.onSearchError)
         this.copyer = renderPub('IMAGE_COPY', ({url, title}) => {
           this.$message({
@@ -181,10 +217,7 @@
           })
         })
         this.$refs.main.$el.addEventListener('scroll', _.throttle(this.onScroll, 300))
-      }
-    },
-    mounted () {
-      this.init()
+      })
     }
   }
 </script>
