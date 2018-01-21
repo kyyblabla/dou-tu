@@ -1,6 +1,6 @@
 import { searchImages } from './http/douTu'
 import { ipcMain, clipboard, nativeImage } from 'electron'
-import { getBinary } from './http/httpUtil'
+import { download } from './downloader'
 
 let mainSub = (eventName, doSomething) => {
   ipcMain.on(eventName, async (event, para) => {
@@ -17,6 +17,8 @@ let mainSub = (eventName, doSomething) => {
 mainSub('IMAGES_SEARCH', searchImages)
 mainSub('IMAGE_COPY', async ({src, title}) => {
   console.log(src)
-  clipboard.writeImage(nativeImage.createFromBuffer(await getBinary(src)))
+  let pathName = await download(src)
+  console.log(`create file:${pathName}`)
+  clipboard.writeImage(nativeImage.createFromDataURL(pathName))
   return {src, title}
 })
